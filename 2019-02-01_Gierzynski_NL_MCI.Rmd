@@ -2,7 +2,12 @@
 title: "2019-02-01_Gierzynski_NL_MCI"
 author: "Nicolas May"
 date: "2/1/2019"
-output: html_document
+output: 
+  html_document:
+    theme: cerulean
+    highlight: espresso
+    toc: true
+    toc_float: true
 ---
 
 ```{r setup, include=FALSE}
@@ -15,6 +20,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 library(dplyr)
+library(stringr)
 ```
 
 ## Load Useful Variables / Helpers
@@ -34,52 +40,66 @@ get_api_data <- TRUE
 
 ### UDS 3
 ```{r}
-fields_u3_raw <- c("ptid"
-                  , "form_date"
-                  , "mrn"
-                  , "madc_id"
-                  , "dob"
-                  , "race"
-                  , "sex"
-                  , "handed"
-                  , "educ"
-                  , "maristat"
-                  , "mocatots"
-                  , "fu_sex"
-                  , "fu_maristat"
-                  , "fu_mocatots")
+fields_u3_raw <- 
+  c(
+    "ptid"
+    , "form_date"
+    , "mrn"
+    , "madc_id"
+    , "dob"
+    # , "race"
+    # , "sex"
+    # , "handed"
+    # , "educ"
+    # , "maristat"
+    , "mocatots"
+    # , "fu_sex"
+    # , "fu_maristat"
+    , "fu_mocatots"
+  )
 fields_u3 <- fields_u3_raw %>% paste(collapse = ",")
 ```
 
 ### MiNDSet Registry
 ```{r}
-fields_ms_raw <- c("subject_id"
-                  , "exam_date"
-                  , "reg_num" # mrn
-                  , "madc_id"
-                  , "date"    # rvf date
-                  , "first_name"
-                  , "last_name"
-                  , "street"
-                  , "pt_city"
-                  , "state"
-                  , "zip_code"
-                  , "county"
-                  , "homephone_number"
-                  , "work_phone"
-                  , "cell_phone"
-                  , "primary_lang"
-                  , "so_fname"    # S/O name
-                  , "street_name" # S/O street address
-                  , "so_city"
-                  , "so_state"
-                  , "so_zip"
-                  , "so_homephone"
-                  , "so_workphone"
-                  , "so_cellphone"
-                  , "so_relationship"
-                  , "feedback"
-                  , "fb_complete")
+fields_ms_raw <- 
+  c(
+    "subject_id"
+    , "exam_date"
+    , "race_value" # 1 Wht, 2 Blk, 3 Asn, 4 Hsp, 5 Oth, 6 Unk
+    , "sex_value"  # 1 M, 2 F
+    , "handedness" # ___1 R, ___2 L, ___3 A
+    , "ed_level"
+    , "marital_status" # 1 Mrd, 2 Wdw, 3 Dvc, 4 Spt, 5 NvM, 6 Sng, 7 Oth
+    , "uds_dx"
+    , "reg_num" # mrn
+    , "madc_id"
+    , "date"    # rvf date
+    , "first_name"
+    , "last_name"
+    , "street"
+    , "pt_city"
+    , "state"
+    , "zip_code"
+    , "county"
+    , "homephone_number"
+    , "work_phone"
+    , "cell_phone"
+    , "primary_lang" # 1 Eng, 2 Spn, 3 Oth
+    , "so_fname"    # S/O name
+    , "street_name" # S/O street address
+    , "so_city"
+    , "so_state"
+    , "so_zip"
+    , "so_homephone"
+    , "so_workphone"
+    , "so_cellphone"
+    , "so_relationship"
+    , "feedback"
+    , "fb_complete"
+    , "notes_box"
+    , "res_refer"
+  )
 fields_ms <- fields_ms_raw %>% paste(collapse = ",")
 ```
 
@@ -90,6 +110,7 @@ fields_ms <- fields_ms_raw %>% paste(collapse = ",")
 if (get_api_data) {
   json_u3 <- rc_api_get(token  = REDCAP_API_TOKEN_UDS3n,
                         fields = fields_u3)
+  json_u3 <- str_replace_all(json_u3, "\r\n", " ")
 }
 
 df_u3 <- jsonlite::fromJSON(json_u3) %>% na_if("")
@@ -100,6 +121,7 @@ df_u3 <- jsonlite::fromJSON(json_u3) %>% na_if("")
 if (get_api_data) {
   json_ms <- rc_api_get(token  = REDCAP_API_TOKEN_MINDSET,
                         fields = fields_ms)
+  json_ms <- str_replace_all(json_ms, "\r\n", " ")
 }
 
 df_ms <- jsonlite::fromJSON(json_ms) %>% na_if("")
@@ -118,8 +140,284 @@ readr::write_csv(df_ms, "df_ms.csv", na = "")
 ```
 
 
+# Process Data
+
+## Clean Data 
+
+### UDS 3
+
+Clean out DDEs.
+```{r}
+df_u3_cln <- df_u3 %>% 
+  filter(str_detect(ptid, "^UM\\d{8}$"))
+```
+
+Clean out missing `forms_date`s.
+```{r}
+df_u3_cln <- df_u3_cln %>% 
+  filter(!is.na(form_date))
+```
+
+Re-type fields appropriately.
+```{r}
+# glimpse(df_u3_cln)
+# tail(df_u3_cln)
+df_u3_cln <- df_u3_cln %>% 
+  mutate(form_date = as_date(form_date),
+         dob = as_date(dob),
+         # sex = as.integer(sex),
+         # race = as.integer(race),
+         # educ = as.integer(educ),
+         # maristat = as.integer(maristat),
+         # handed = as.integer(handed),
+         mocatots = as.integer(mocatots),
+         # fu_maristat = as.integer(fu_maristat),
+         # fu_sex = as.integer(fu_sex),
+         fu_mocatots = as.integer(fu_mocatots))
+```
+
+Collapse IVP / FVP / TVP fields.
+```{r}
+collapsible_fields <- get_ift_dups(names(df_u3_cln))
+
+df_u3_cln_copy <- df_u3_cln
+
+for (field in collapsible_fields) {
+  df_u3_cln_copy <- collapse_ift_cols(df_u3_cln_copy, !!field) # <= NOTICE !!
+}
+
+df_u3_cln <- df_u3_cln_copy
+rm(df_u3_cln_copy)
+```
+
+Propogate demographic data over NAs.
+```{r}
+# glimpse(df_u3_cln)
+# dob
+df_u3_cln <- df_u3_cln %>% 
+  propagate_value(ptid, form_date, dob)
+# # sex
+# df_u3_cln <- df_u3_cln %>% 
+#   propagate_value(ptid, form_date, sex)
+# # race
+# df_u3_cln <- df_u3_cln %>% 
+#   propagate_value(ptid, form_date, race)
+# # educ
+# df_u3_cln <- df_u3_cln %>% 
+#   propagate_value(ptid, form_date, educ)
+# # maristat
+# df_u3_cln <- df_u3_cln %>% 
+#   propagate_value(ptid, form_date, maristat)
+# # handed
+# df_u3_cln <- df_u3_cln %>% 
+#   propagate_value(ptid, form_date, handed)
+```
+
+Calculate age.
+```{r}
+df_u3_cln <- df_u3_cln %>% 
+  calculate_age(dob = dob, visit_date = today()) %>% 
+  select(-age_years, -age_units)
+```
 
 
+### MiNDSet Registry
+
+```{r}
+# glimpse(df_ms)
+# head(df_ms, n = 10)
+```
+
+Clean out missing `exam_date`s.
+```{r}
+df_ms_cln <- df_ms %>% 
+  filter(!is.na(exam_date))
+```
+
+Clean out non-UMMAP IDs.
+```{r}
+df_ms_cln <- df_ms_cln %>% 
+  filter(str_detect(subject_id, "^UM\\d{8}$"))
+```
+
+Re-type fields appropriately.
+```{r}
+# glimpse(df_ms_cln)
+df_ms_cln <- df_ms_cln %>%
+  mutate(date = as_date(date),
+         race_value = as.integer(race_value),
+         sex_value = as.integer(sex_value),
+         handedness___1 = as.integer(handedness___1),
+         handedness___2 = as.integer(handedness___2),
+         handedness___3 = as.integer(handedness___3),
+         ed_level = as.integer(ed_level),
+         primary_lang = as.integer(primary_lang),
+         marital_status = as.integer(marital_status),
+         exam_date = as_date(exam_date),
+         feedback = as.integer(feedback),
+         fb_complete = as.integer(fb_complete))
+
+```
+
+Mutate `handedness___*` fields.
+```{r}
+df_ms_cln <- df_ms_cln %>% 
+  mutate(handedness = case_when(
+    handedness___3 == 1 ~ 3L,
+    handedness___2 == 1 ~ 2L,
+    handedness___1 == 1 ~ 1L
+  )) %>% 
+  select(-starts_with("handedness___"))
+```
+
+Propogate demographic data over NAs.
+```{r}
+# glimpse(df_ms_cln)
+# race_value
+df_ms_cln <- df_ms_cln %>% 
+  propagate_value(subject_id, exam_date, race_value)
+# sex_value
+df_ms_cln <- df_ms_cln %>% 
+  propagate_value(subject_id, exam_date, race_value)
+# ed_level
+df_ms_cln <- df_ms_cln %>% 
+  propagate_value(subject_id, exam_date, race_value)
+# primary_lang
+df_ms_cln <- df_ms_cln %>% 
+  propagate_value(subject_id, exam_date, race_value)
+# handedness
+df_ms_cln <- df_ms_cln %>% 
+  propagate_value(subject_id, exam_date, race_value)
+```
+
+
+# Join Data
+
+## Left Join: UDS 3 (L) + MiNDSet Registry (R)
+
+```{r}
+df_u3_ms <-
+  FuzzyDateJoin::outer_left(
+    x = df_u3_cln, y = df_ms_cln,
+    x_id_col = "ptid", y_id_col = "subject_id",
+    x_date_col = "form_date", y_date_col = "exam_date",
+    x_intvl_less = 120, x_intvl_more = 120,
+    keep_y_id = FALSE
+  )
+# glimpse(df_u3_ms)
+```
+
+# Filter for Study Criteria
+
+Get NLs (26) or MCIs (1, 2, 27, 28, 31, 34).
+```{r}
+target_dx <- as.integer(c(26, 1, 2, 27, 28, 31, 34))
+
+df_u3_ms_trg <- df_u3_ms %>% 
+  filter(uds_dx %in% target_dx)
+
+df_u3_ms_trg %>% 
+  group_by(uds_dx) %>% 
+  summarize(n = n()) %>% 
+  arrange(desc(n))
+```
+
+Get >= 65 years old.
+```{r}
+df_u3_ms_trg <- df_u3_ms_trg %>%
+  filter(age_exact >= 65.00)
+# min(df_u3_ms_trg$age_exact)
+```
+
+Get white (1) or black (2) race.
+```{r}
+target_race <- as.integer(c(1, 2)) # 1 Wht, 2 Blk
+
+df_u3_ms_trg <- df_u3_ms_trg %>% 
+  filter(race_value %in% target_race)
+```
+
+Get those with a study partner.
+```{r}
+df_u3_ms_trg <- df_u3_ms_trg %>% 
+  filter(!is.na(so_fname))
+```
+
+**DO NOT APPLY** - Get those for whom feedback has been given.
+```{r}
+df_u3_ms_trg_fb <- df_u3_ms_trg # %>%
+  # filter(fb_complete == 1L)
+```
+
+Get only latest visit.
+```{r}
+df_u3_ms_trg_fb_dedup <- df_u3_ms_trg_fb %>% 
+  calculate_visit_num(ptid, form_date) %>% 
+  arrange(ptid, desc(form_date)) %>% 
+  group_by(ptid) %>% 
+  mutate(max_visit_num = max(visit_num)) %>% 
+  filter(visit_num == max_visit_num) %>% 
+  select(-max_visit_num)
+```
+
+**DO NOT APPLY** - Get only visits with last 12 months.
+```{r}
+# df_u3_ms_trg_fb_dedup <- df_u3_ms_trg_fb_dedup %>% 
+#   filter(form_date >= (today() - months(12)))
+```
+
+
+```{r}
+# df_u3_ms_trg_fb_dedup %>% 
+#   group_by(uds_dx) %>% 
+#   summarize(n = n())
+
+df_u3_ms_trg_fb_dedup %>%
+  mutate(dx_cat = case_when(
+    is.na(uds_dx) ~ NA_character_,
+    uds_dx == 26L ~ "NL",
+    TRUE ~ "MCI"
+  )) %>%
+  group_by(dx_cat) %>%
+  summarize(n = n())
+```
+
+```{r}
+df_u3_ms_trg_fb_dedup %>% 
+  select(ptid, form_date, uds_dx)
+```
+
+
+# Filter Out Sherry's Existing List
+
+Load Sherry's spreadsheet.
+```{r}
+df_sherry <- readxl::read_excel("./MCI-DEM participants-List 1_2-01-2019.xlsx")
+```
+
+Get IDs in Sherry's spreadsheet.
+```{r}
+ids_sherry <- df_sherry %>% pull(`Subject ID`)
+ids_sherry
+```
+
+Filter out Sherry spreadsheet IDs.
+```{r}
+df_u3_ms_trg_fb_dedup_nots <- df_u3_ms_trg_fb_dedup %>% 
+  filter(!(ptid %in% ids_sherry))
+```
+
+# Write to CSV
+
+```{r}
+readr::write_csv(df_u3_ms_trg_fb_dedup_nots, 
+                 "New MCI-DEM participants-List 2_2019-02-04.csv", 
+                 na = "")
+```
+
+
+
+```{r echo = FALSE}
 ###@    #==--  :  --==#    @##==---==##@##==---==##@    #==--  :  --==#    @###
 #==##@    #==-- --==#    @##==---==##@   @##==---==##@    #==-- --==#    @##==#
 #--==##@    #==-==#    @##==---==##@   #   @##==---==##@    #==-==#    @##==--#
@@ -145,3 +443,4 @@ readr::write_csv(df_ms, "df_ms.csv", na = "")
 #--==##@    #==-==#    @##==---==##@   #   @##==---==##@    #==-==#    @##==--#
 #==##@    #==-- --==#    @##==---==##@   @##==---==##@    #==-- --==#    @##==#
 ###@    #==--  :  --==#    @##==---==##@##==---==##@    #==--  :  --==#    @###
+```
